@@ -273,16 +273,100 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ── Tabel & download ──────────────────────────────────────────────────────────
+# ── Download peta ─────────────────────────────────────────────────────────────
+st.subheader("6. Download peta & data")
+
+# --- Peta HTML interaktif (Folium) -------------------------------------------
+# Buat ulang peta hasil lengkap pakai Folium agar bisa disimpan sebagai HTML
+m_result = folium.Map(location=[center_lat, center_lon], zoom_start=14,
+                      tiles=tile_url, attr=tile_attr)
+
+# Semua titik — biru
+fg_all = folium.FeatureGroup(name="Semua titik")
+for _, row in work_df.iterrows():
+    folium.CircleMarker(
+        location=[row[lat_col], row[lon_col]],
+        radius=4, color="#3b82f6", fill=True, fill_opacity=0.5, weight=0,
+        tooltip=f"lat={row[lat_col]:.6f}, lon={row[lon_col]:.6f}",
+    ).add_to(fg_all)
+fg_all.add_to(m_result)
+
+# Titik dalam polygon — merah
+if not result_df.empty:
+    fg_in = folium.FeatureGroup(name="Dalam polygon")
+    for _, row in result_df.iterrows():
+        folium.CircleMarker(
+            location=[row[lat_col], row[lon_col]],
+            radius=6, color="#ef4444", fill=True, fill_opacity=0.9, weight=0,
+            tooltip=f"lat={row[lat_col]:.6f}, lon={row[lon_col]:.6f}",
+        ).add_to(fg_in)
+    fg_in.add_to(m_result)
+
+# Garis polygon
+closed_latlon = [(p[1], p[0]) for p in closed]
+folium.PolyLine(closed_latlon, color="#16a34a", weight=3,
+                tooltip="Batas polygon").add_to(m_result)
+
+# Isi area polygon (transparan)
+folium.Polygon(
+    locations=closed_latlon,
+    color="#16a34a", weight=2,
+    fill=True, fill_color="#16a34a", fill_opacity=0.08,
+).add_to(m_result)
+
+folium.LayerControl().add_to(m_result)
+
+# Render ke HTML string
+html_bytes = m_result._repr_html_()  # returns full HTML string
+html_bytes_encoded = m_result.get_root().render().encode("utf-8")
+
+# --- Download PNG via Plotly to_image (kaleido) ------------------------------
+_ensure("kaleido")
+try:
+    import io as _io
+    png_bytes = fig.to_image(format="png", width=1400, height=700, scale=2)
+    png_available = True
+except Exception:
+    png_available = False
+
+# --- Tombol download ---------------------------------------------------------
+dl_cols = st.columns(3)
+
+with dl_cols[0]:
+    st.download_button(
+        label="🗺️ Download Peta (HTML interaktif)",
+        data=html_bytes_encoded,
+        file_name="peta_reflectance_polygon.html",
+        mime="text/html",
+        use_container_width=True,
+        help="Buka di browser — bisa zoom, pan, klik titik",
+    )
+
+with dl_cols[1]:
+    if png_available:
+        st.download_button(
+            label="🖼️ Download Peta (PNG)",
+            data=png_bytes,
+            file_name="peta_reflectance_polygon.png",
+            mime="image/png",
+            use_container_width=True,
+            help="Gambar statis resolusi tinggi",
+        )
+    else:
+        st.info("PNG tidak tersedia (kaleido gagal install). Pakai HTML saja.")
+
+with dl_cols[2]:
+    st.download_button(
+        label="⬇️ Download CSV hasil polygon",
+        data=csv_bytes(result_df),
+        file_name="reflectance_polygon_output.csv",
+        mime="text/csv",
+        use_container_width=True,
+        help=f"{len(result_df):,} baris titik dalam polygon",
+    )
+
+# ── Tabel ─────────────────────────────────────────────────────────────────────
 st.dataframe(result_df, use_container_width=True)
-st.download_button(
-    label="⬇️ Download CSV hasil polygon",
-    data=csv_bytes(result_df),
-    file_name="reflectance_polygon_output.csv",
-    mime="text/csv",
-    type="primary",
-    use_container_width=True,
-)
 
 if result_df.empty:
     st.warning("Tidak ada titik dalam polygon. Coba perluas area gambar.")
