@@ -40,7 +40,7 @@ with st.sidebar:
     st.caption("v1.2.0")
 
 # ════════════════════════════════════════════════════════════════════
-# MENU: Sentinel — Coming Soon
+# Get Data Sentinel 
 # ════════════════════════════════════════════════════════════════════
 if menu == "🌍 Ambil Data Sentinel":
     st.title("🌍 Ambil Data Reflectance — Sentinel")
