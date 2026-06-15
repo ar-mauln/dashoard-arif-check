@@ -1,6 +1,6 @@
 # reflectance_polygon_app.py
-# Peta interaktif pakai Plotly Mapbox (open-street-map, gratis, tanpa API key)
-# Gambar polygon langsung di peta → filter titik → download CSV
+# Peta interaktif Folium + Plotly Mapbox
+# Download peta sebagai HTML (berisi tombol Save PNG via html2canvas)
 # Jalankan: streamlit run reflectance_polygon_app.py
 
 import sys, subprocess
@@ -17,7 +17,6 @@ _ensure("numpy")
 _ensure("streamlit_folium", "streamlit_folium")
 _ensure("folium")
 
-from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import folium
@@ -27,7 +26,79 @@ import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(page_title="Reflectance Polygon Acquire", layout="wide")
-st.title("🛰️ Reflectance Acquire by Polygon")
+
+# ── Navigasi Menu ─────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🛰️ Reflectance Tools")
+    st.markdown("---")
+    menu = st.radio(
+        "Pilih Menu",
+        options=["📂 Polygon dari CSV", "🌍 Ambil Data Sentinel"],
+        label_visibility="collapsed",
+    )
+    st.markdown("---")
+    st.caption("v1.2.0")
+
+# ════════════════════════════════════════════════════════════════════
+# MENU: Sentinel — Coming Soon
+# ════════════════════════════════════════════════════════════════════
+if menu == "🌍 Ambil Data Sentinel":
+    st.title("🌍 Ambil Data Reflectance — Sentinel")
+    st.markdown("---")
+
+    col_mid = st.columns([1, 2, 1])[1]
+    with col_mid:
+        st.markdown(
+            """
+            <div style="
+                background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+                border: 1px solid #334155;
+                border-radius: 16px;
+                padding: 48px 32px;
+                text-align: center;
+                margin-top: 32px;
+            ">
+                <div style="font-size: 64px; margin-bottom: 16px;">🛰️</div>
+                <h2 style="color: #f1f5f9; margin-bottom: 8px;">Coming Soon</h2>
+                <p style="color: #94a3b8; font-size: 16px; margin-bottom: 24px;">
+                    Fitur ini sedang dalam pengembangan.<br>
+                    Kami sedang membangun integrasi langsung ke <strong style="color:#38bdf8;">Sentinel Hub API</strong>
+                    untuk mengambil data reflectance otomatis tanpa perlu upload CSV manual.
+                </p>
+                <div style="
+                    display: inline-block;
+                    background: #1e40af22;
+                    border: 1px solid #3b82f6;
+                    border-radius: 8px;
+                    padding: 10px 20px;
+                    color: #60a5fa;
+                    font-size: 13px;
+                    margin-bottom: 28px;
+                ">⚙️ &nbsp; In Progress
+                </div>
+                <hr style="border-color: #334155; margin: 24px 0;">
+                <p style="color: #64748b; font-size: 13px; margin: 0;">
+                    Fitur yang direncanakan:
+                </p>
+                <ul style="color: #94a3b8; font-size: 13px; text-align: left; margin-top: 12px; line-height: 2;">
+                    <li>🗓️ Pilih rentang tanggal akuisisi</li>
+                    <li>🗺️ Gambar area of interest di peta</li>
+                    <li>☁️ Filter cloud cover otomatis</li>
+                    <li>📡 Download band B2, B3, B4, B8 langsung</li>
+                    <li>📊 Preview citra dan ekspor CSV reflectance</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.info("💬 Pantau update atau hubungi developer untuk info lebih lanjut.")
+    st.stop()
+
+# ════════════════════════════════════════════════════════════════════
+# MENU: Polygon dari CSV (menu utama)
+# ════════════════════════════════════════════════════════════════════
+st.title("📂 Reflectance Acquire by Polygon")
 st.caption("Upload CSV → gambar polygon di peta → proses → download hasil.")
 
 
@@ -56,6 +127,52 @@ def point_in_polygon(df, lon_col, lat_col, polygon):
 
 def csv_bytes(df):
     return df.to_csv(index=False).encode("utf-8-sig")
+
+# Tombol Save PNG yang di-inject ke dalam HTML file (via html2canvas CDN)
+PNG_INJECT = """
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  #save-png-btn {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: #16a34a; color: #fff; border: none; border-radius: 8px;
+    padding: 12px 22px; font-size: 15px; font-weight: 600;
+    cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    transition: background 0.2s;
+  }
+  #save-png-btn:hover { background: #15803d; }
+  #save-png-msg {
+    position: fixed; bottom: 74px; right: 24px; z-index: 9999;
+    background: #1e293b; color: #fff; padding: 8px 16px;
+    border-radius: 6px; font-size: 13px; display: none;
+  }
+</style>
+<button id="save-png-btn">🖼️ Save as PNG</button>
+<div id="save-png-msg">Sedang memproses...</div>
+<script>
+document.getElementById("save-png-btn").addEventListener("click", function() {
+  var msg = document.getElementById("save-png-msg");
+  msg.style.display = "block";
+  msg.innerText = "Sedang memproses...";
+  setTimeout(function() {
+    html2canvas(document.body, {
+      useCORS: true, allowTaint: true,
+      width: window.innerWidth, height: window.innerHeight,
+      scale: 2
+    }).then(function(canvas) {
+      var link = document.createElement("a");
+      link.download = "peta_reflectance_polygon.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      msg.innerText = "Tersimpan!";
+      setTimeout(function() { msg.style.display = "none"; }, 2500);
+    }).catch(function(err) {
+      msg.innerText = "Gagal: " + err;
+      setTimeout(function() { msg.style.display = "none"; }, 3000);
+    });
+  }, 300);
+});
+</script>
+"""
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -109,25 +226,20 @@ center_lon = float(work_df[lon_col].mean())
 st.subheader("3. Gambar polygon di peta")
 
 tile_choice = st.selectbox("Basemap", ["OpenStreetMap", "Satelit (Esri)", "Satelit (Google)"])
-
 tile_map = {
     "OpenStreetMap": ("OpenStreetMap", "© OpenStreetMap contributors"),
     "Satelit (Esri)": (
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        "Tiles © Esri"
-    ),
+        "Tiles © Esri"),
     "Satelit (Google)": (
         "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-        "© Google"
-    ),
+        "© Google"),
 }
-
 tile_url, tile_attr = tile_map[tile_choice]
 
 m = folium.Map(location=[center_lat, center_lon], zoom_start=14,
                tiles=tile_url, attr=tile_attr)
 
-# Titik CSV di peta (max 3000)
 sample = work_df if len(work_df) <= 3000 else work_df.sample(3000, random_state=42)
 fg = folium.FeatureGroup(name="Titik CSV")
 for _, row in sample.iterrows():
@@ -138,7 +250,6 @@ for _, row in sample.iterrows():
     ).add_to(fg)
 fg.add_to(m)
 
-# Toolbar gambar
 Draw(
     draw_options={
         "polygon":   {"shapeOptions": {"color": "#16a34a"}},
@@ -148,25 +259,19 @@ Draw(
     },
     edit_options={"edit": True, "remove": True},
 ).add_to(m)
-
 folium.LayerControl().add_to(m)
 
-st.info(
-    "**Cara pakai:** Klik ikon ⬡ polygon di toolbar kiri peta → "
-    "klik titik-titik area → klik ganda / tutup polygon → tekan **Proses**"
-)
-map_data = st_folium(m, height=500, use_container_width=True,
-                     returned_objects=["all_drawings"])
+st.info("**Cara pakai:** Klik ikon ⬡ polygon di toolbar kiri → klik titik area → tutup polygon → **Proses**")
+map_data = st_folium(m, height=500, use_container_width=True, returned_objects=["all_drawings"])
 
-# ── Ekstrak koordinat polygon dari peta ──────────────────────────────────────
+# ── Ekstrak koordinat polygon ─────────────────────────────────────────────────
 polygon_lon_lat = []
 if map_data and map_data.get("all_drawings"):
     last = map_data["all_drawings"][-1]
     geo_type = last.get("geometry", {}).get("type", "")
     coords   = last.get("geometry", {}).get("coordinates", [])
     if geo_type == "Polygon" and coords:
-        ring = coords[0]
-        polygon_lon_lat = [(c[0], c[1]) for c in ring[:-1]]
+        polygon_lon_lat = [(c[0], c[1]) for c in coords[0][:-1]]
     elif geo_type in ("LineString", "MultiPoint") and coords:
         polygon_lon_lat = [(c[0], c[1]) for c in coords]
 
@@ -215,73 +320,51 @@ mc[1].metric("Dalam polygon",      f"{len(result_df):,}")
 mc[2].metric("Di luar polygon",    f"{len(work_df)-len(result_df):,}")
 
 # ════════════════════════════════════════════════════════════════════
-# STEP 5 — Peta HASIL pakai Plotly Mapbox (peta asli + titik overlay)
+# STEP 5 — Peta HASIL (Plotly Mapbox, tampil di app)
 # ════════════════════════════════════════════════════════════════════
 st.subheader("5. Visualisasi hasil di peta")
 
-mapbox_styles = {
-    "OpenStreetMap": "open-street-map",
-    "Satelit (Esri)": "white-bg",   # fallback; Esri tidak native di plotly free
-    "Satelit (Google)": "white-bg",
-}
-# Untuk satelit pakai Mapbox style yang mendekati
 mapbox_style = "open-street-map" if tile_choice == "OpenStreetMap" else "carto-positron"
-
 closed = polygon_lon_lat + [polygon_lon_lat[0]]
 poly_lon_list = [p[0] for p in closed]
 poly_lat_list = [p[1] for p in closed]
 
 fig = go.Figure()
-
-# Semua titik — biru transparan
 fig.add_trace(go.Scattermapbox(
     lat=work_df[lat_col], lon=work_df[lon_col],
-    mode="markers",
-    marker=dict(size=6, color="#3b82f6", opacity=0.4),
+    mode="markers", marker=dict(size=6, color="#3b82f6", opacity=0.4),
     name="Semua titik",
     hovertemplate="lat: %{lat:.6f}<br>lon: %{lon:.6f}<extra></extra>",
 ))
-
-# Titik dalam polygon — merah
 if not result_df.empty:
     fig.add_trace(go.Scattermapbox(
         lat=result_df[lat_col], lon=result_df[lon_col],
-        mode="markers",
-        marker=dict(size=9, color="#ef4444", opacity=0.9),
+        mode="markers", marker=dict(size=9, color="#ef4444", opacity=0.9),
         name="Dalam polygon",
         hovertemplate="lat: %{lat:.6f}<br>lon: %{lon:.6f}<extra></extra>",
     ))
-
-# Garis polygon
 fig.add_trace(go.Scattermapbox(
     lat=poly_lat_list, lon=poly_lon_list,
-    mode="lines",
-    line=dict(color="#16a34a", width=3),
+    mode="lines", line=dict(color="#16a34a", width=3),
     name="Polygon",
 ))
-
 fig.update_layout(
-    mapbox=dict(
-        style=mapbox_style,
-        center=dict(lat=center_lat, lon=center_lon),
-        zoom=13,
-    ),
-    margin=dict(l=0, r=0, t=0, b=0),
-    height=520,
+    mapbox=dict(style=mapbox_style, center=dict(lat=center_lat, lon=center_lon), zoom=13),
+    margin=dict(l=0, r=0, t=0, b=0), height=520,
     legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
 )
-
 st.plotly_chart(fig, use_container_width=True)
 
-# ── Download peta ─────────────────────────────────────────────────────────────
+
+# ════════════════════════════════════════════════════════════════════
+# STEP 6 — Download: HTML (+ tombol Save PNG di dalamnya) + CSV
+# ════════════════════════════════════════════════════════════════════
 st.subheader("6. Download peta & data")
 
-# --- Peta HTML interaktif (Folium) -------------------------------------------
-# Buat ulang peta hasil lengkap pakai Folium agar bisa disimpan sebagai HTML
+# Buat peta Folium hasil lengkap
 m_result = folium.Map(location=[center_lat, center_lon], zoom_start=14,
                       tiles=tile_url, attr=tile_attr)
 
-# Semua titik — biru
 fg_all = folium.FeatureGroup(name="Semua titik")
 for _, row in work_df.iterrows():
     folium.CircleMarker(
@@ -291,7 +374,6 @@ for _, row in work_df.iterrows():
     ).add_to(fg_all)
 fg_all.add_to(m_result)
 
-# Titik dalam polygon — merah
 if not result_df.empty:
     fg_in = folium.FeatureGroup(name="Dalam polygon")
     for _, row in result_df.iterrows():
@@ -302,60 +384,29 @@ if not result_df.empty:
         ).add_to(fg_in)
     fg_in.add_to(m_result)
 
-# Garis polygon
 closed_latlon = [(p[1], p[0]) for p in closed]
-folium.PolyLine(closed_latlon, color="#16a34a", weight=3,
-                tooltip="Batas polygon").add_to(m_result)
-
-# Isi area polygon (transparan)
-folium.Polygon(
-    locations=closed_latlon,
-    color="#16a34a", weight=2,
-    fill=True, fill_color="#16a34a", fill_opacity=0.08,
-).add_to(m_result)
-
+folium.PolyLine(closed_latlon, color="#16a34a", weight=3).add_to(m_result)
+folium.Polygon(locations=closed_latlon, color="#16a34a", weight=2,
+               fill=True, fill_color="#16a34a", fill_opacity=0.08).add_to(m_result)
 folium.LayerControl().add_to(m_result)
 
-# Render ke HTML string
-html_bytes = m_result._repr_html_()  # returns full HTML string
-html_bytes_encoded = m_result.get_root().render().encode("utf-8")
+# Inject tombol Save PNG ke HTML sebelum </body>
+raw_html = m_result.get_root().render()
+html_with_btn = raw_html.replace("</body>", PNG_INJECT + "\n</body>")
+html_bytes_encoded = html_with_btn.encode("utf-8")
 
-# --- Download PNG via Plotly to_image (kaleido) ------------------------------
-_ensure("kaleido")
-try:
-    import io as _io
-    png_bytes = fig.to_image(format="png", width=1400, height=700, scale=2)
-    png_available = True
-except Exception:
-    png_available = False
-
-# --- Tombol download ---------------------------------------------------------
-dl_cols = st.columns(3)
-
+# Tombol download
+dl_cols = st.columns(2)
 with dl_cols[0]:
     st.download_button(
-        label="🗺️ Download Peta (HTML interaktif)",
+        label="🗺️ Download Peta (HTML)",
         data=html_bytes_encoded,
         file_name="peta_reflectance_polygon.html",
         mime="text/html",
         use_container_width=True,
-        help="Buka di browser — bisa zoom, pan, klik titik",
+        help="Buka di browser → klik tombol hijau 'Save as PNG' di pojok kanan bawah",
     )
-
 with dl_cols[1]:
-    if png_available:
-        st.download_button(
-            label="🖼️ Download Peta (PNG)",
-            data=png_bytes,
-            file_name="peta_reflectance_polygon.png",
-            mime="image/png",
-            use_container_width=True,
-            help="Gambar statis resolusi tinggi",
-        )
-    else:
-        st.info("PNG tidak tersedia (kaleido gagal install). Pakai HTML saja.")
-
-with dl_cols[2]:
     st.download_button(
         label="⬇️ Download CSV hasil polygon",
         data=csv_bytes(result_df),
@@ -364,6 +415,11 @@ with dl_cols[2]:
         use_container_width=True,
         help=f"{len(result_df):,} baris titik dalam polygon",
     )
+
+st.info(
+    "💡 **Cara save PNG:** Download HTML → buka di Chrome/Firefox → "
+    "klik tombol hijau **🖼️ Save as PNG** di pojok kanan bawah peta."
+)
 
 # ── Tabel ─────────────────────────────────────────────────────────────────────
 st.dataframe(result_df, use_container_width=True)
