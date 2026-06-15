@@ -182,7 +182,7 @@ with st.sidebar:
     st.info("Minimal ada kolom latitude & longitude.")
 
 if uploaded_file is None:
-    st.warning("Upload CSV dulu.")
+    st.warning("No Data.")
     st.stop()
 
 try:
